@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RYNN — Asistente de Voz v2</title>
+<script src="https://js.puter.com/v2/"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #030508;
+    --surface:  #0d1520;
+    --border:   #1a2d45;
+    --cyan:     #00d4ff;
+    --cyan-dim: #0088aa;
+    --red:      #ff2d5b;
+    --green:    #00ff88;
+    --purple:   #aa66ff;
+    --orange:   #ff9944;
+    --white:    #e8f4ff;
+    --gray:     #4a6070;
+    --gray2:    #2a3a4a;
+    --accent:   var(--cyan);
+    --font-hud: 'Orbitron', monospace;
+    --font-mono:'Share Tech Mono', monospace;
+    --font-body:'Rajdhani', sans-serif;
+  }
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  html, body { width:100%; height:100%; background:var(--bg); color:var(--white); font-family:var(--font-body); overflow:hidden; cursor:none; }
+
+  /* Cursor */
+  #cursor { position:fixed; width:8px; height:8px; background:var(--accent); border-radius:50%; pointer-events:none; z-index:9999; box-shadow:0 0 10px var(--accent); transition:background .3s, box-shadow .3s; }
+  #cursor-ring { position:fixed; width:28px; height:28px; border:1px solid var(--cyan-dim); border-radius:50%; pointer-events:none; z-index:9998; opacity:.5; transition:left .1s,top .1s; }
+
+  /* Background */
+  #bg-grid { position:fixed; inset:0; z-index:0; background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px); background-size:40px 40px; animation:gridShift 20s linear infinite; }
+  @keyframes gridShift { 100%{background-position:40px 40px} }
+  #scanline { position:fixed; inset:0; z-index:1; pointer-events:none; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.06) 2px,rgba(0,0,0,.06) 4px); }
+
+  /* Corners */
+  .corner { position:fixed; width:55px; height:55px; z-index:2; pointer-events:none; }
+  .corner::before,.corner::after { content:''; position:absolute; background:var(--accent); opacity:.5; transition:background .3s; }
+  .corner::before{width:2px;height:100%} .corner::after{width:100%;height:2px}
+  .corner.tl{top:18px;left:18px} .corner.tr{top:18px;right:18px;transform:scaleX(-1)} .corner.bl{bottom:18px;left:18px;transform:scaleY(-1)} .corner.br{bottom:18px;right:18px;transform:scale(-1)}
+
+  /* HUD Top */
+  #hud-top { position:fixed; top:0; left:0; right:0; height:46px; z-index:10; display:flex; align-items:center; justify-content:space-between; padding:0 76px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,rgba(0,18,32,.95),transparent); font-family:var(--font-mono); font-size:10px; color:var(--cyan-dim); letter-spacing:2px; }
+  .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); margin-right:8px; animation:pulseDot 2s infinite; }
+  @keyframes pulseDot{0%,100%{opacity:1;box-shadow:0 0 6px var(--accent)}50%{opacity:.3;box-shadow:none}}
+
+  /* Mode badge */
+  #mode-badge { padding:3px 10px; border:1px solid var(--accent); border-radius:2px; font-size:9px; letter-spacing:2px; color:var(--accent); transition:all .3s; }
+
+  /* Main app */
+  #app { position:relative; z-index:5; width:100%; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:56px 20px 80px; }
+
+  #rynn-name { font-family:var(--font-hud); font-size:clamp(42px,9vw,82px); font-weight:900; letter-spacing:.3em; color:transparent; background:linear-gradient(135deg,var(--accent) 0%,#fff 50%,var(--cyan-dim) 100%); -webkit-background-clip:text; background-clip:text; filter:drop-shadow(0 0 28px rgba(0,212,255,.4)); animation:nameGlow 4s ease-in-out infinite; margin-bottom:4px; transition:filter .3s; }
+  @keyframes nameGlow{0%,100%{filter:drop-shadow(0 0 18px rgba(0,212,255,.3))}50%{filter:drop-shadow(0 0 48px rgba(0,212,255,.7))}}
+  #rynn-tagline { font-family:var(--font-mono); font-size:10px; color:var(--gray); letter-spacing:4px; margin-bottom:28px; }
+
+  /* Orb */
+  #orb-wrap { position:relative; width:190px; height:190px; margin-bottom:20px; }
+  .ring { position:absolute; border-radius:50%; border:1px solid transparent; top:50%; left:50%; transform:translate(-50%,-50%); }
+  .ring-1{width:190px;height:190px;border-top-color:var(--accent);border-right-color:var(--cyan-dim);animation:spin1 8s linear infinite;opacity:.6;transition:border-color .3s}
+  .ring-2{width:158px;height:158px;border-bottom-color:var(--accent);border-left-color:var(--cyan-dim);animation:spin2 5s linear infinite;opacity:.4;transition:border-color .3s}
+  .ring-3{width:126px;height:126px;border-top-color:rgba(0,212,255,.22);animation:spin1 13s linear infinite;opacity:.5}
+  @keyframes spin1{to{transform:translate(-50%,-50%) rotate(360deg)}} @keyframes spin2{to{transform:translate(-50%,-50%) rotate(-360deg)}}
+
+  #orb { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:104px; height:104px; border-radius:50%; background:radial-gradient(circle at 35% 35%,rgba(0,212,255,.13) 0%,rgba(0,100,160,.07) 40%,rgba(0,20,40,.9) 100%); border:1px solid rgba(0,212,255,.3); box-shadow:0 0 28px rgba(0,212,255,.18),inset 0 0 28px rgba(0,212,255,.04); display:flex; align-items:center; justify-content:center; transition:all .3s; }
+
+  /* Real audio visualizer */
+  #canvas-wrap { width:70px; height:40px; display:flex; align-items:center; justify-content:center; }
+  #audio-canvas { width:70px; height:40px; }
+
+  /* States */
+  body.listening #orb{background:radial-gradient(circle at 35% 35%,rgba(0,212,255,.26) 0%,rgba(0,150,200,.13) 40%,rgba(0,30,50,.9) 100%);box-shadow:0 0 75px rgba(0,212,255,.55),inset 0 0 45px rgba(0,212,255,.18);border-color:var(--accent);animation:orbPulse 1.2s ease-in-out infinite}
+  @keyframes orbPulse{0%,100%{box-shadow:0 0 55px rgba(0,212,255,.45),inset 0 0 35px rgba(0,212,255,.12)}50%{box-shadow:0 0 95px rgba(0,212,255,.75),inset 0 0 55px rgba(0,212,255,.22)}}
+  body.listening .ring-1{animation-duration:3s;opacity:1} body.listening .ring-2{animation-duration:2s;opacity:.8}
+  body.speaking #orb{box-shadow:0 0 55px rgba(0,212,255,.45),inset 0 0 35px rgba(0,212,255,.12)}
+  body.processing #orb{animation:orbProcess 1.5s ease-in-out infinite}
+  @keyframes orbProcess{0%{border-color:rgba(0,212,255,.3)}50%{border-color:rgba(0,212,255,.9);box-shadow:0 0 65px rgba(0,212,255,.45)}100%{border-color:rgba(0,212,255,.3)}}
+
+  /* Status */
+  #status { font-family:var(--font-mono); font-size:11px; color:var(--cyan-dim); letter-spacing:3px; text-transform:uppercase; height:18px; transition:all .3s; margin-bottom:16px; }
+  body.listening #status{color:var(--accent)} body.speaking #status{color:#88ddff} body.processing #status{color:var(--gray);animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.3}}
+
+  /* Mode selector */
+  #mode-bar { display:flex; gap:8px; margin-bottom:16px; }
+  .mode-btn { padding:5px 14px; background:transparent; border:1px solid var(--gray2); color:var(--gray); font-family:var(--font-mono); font-size:9px; letter-spacing:2px; cursor:pointer; transition:all .25s; border-radius:2px; }
+  .mode-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .mode-btn.active { border-color:var(--accent); color:var(--accent); background:rgba(0,212,255,.08); box-shadow:0 0 10px rgba(0,212,255,.15); }
+
+  /* Chat area */
+  #chat-area { width:100%; max-width:660px; max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:0 4px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  #chat-area::-webkit-scrollbar{width:3px} #chat-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  .msg { padding:9px 13px; border-radius:3px; font-size:13px; line-height:1.6; animation:msgIn .3s ease-out; border-left:2px solid transparent; }
+  @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .msg.user{background:rgba(0,212,255,.04);border-left:none;border-right:2px solid var(--cyan-dim);color:var(--gray);font-family:var(--font-mono);font-size:11px;align-self:flex-end;max-width:88%;text-align:right}
+  .msg.user::before{content:'[ TÚ ] ';color:var(--cyan-dim);font-size:9px;letter-spacing:2px}
+  .msg.rynn{background:rgba(0,20,35,.8);border-left-color:var(--accent);color:var(--white);font-family:var(--font-body);font-size:13px;font-weight:300;align-self:flex-start;max-width:95%}
+  .msg.rynn::before{content:'RYNN // ';color:var(--accent);font-family:var(--font-mono);font-size:9px;letter-spacing:2px}
+  .msg.cmd{background:rgba(0,255,136,.06);border-left-color:var(--green);color:var(--green);font-family:var(--font-mono);font-size:10px;align-self:center}
+  .msg.error{background:rgba(255,45,91,.07);border-left-color:var(--red);color:#ff9999;font-size:11px;font-family:var(--font-mono)}
+
+  /* Memory indicator */
+  #memory-bar { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  #memory-count { font-family:var(--font-mono); font-size:9px; color:var(--gray2); letter-spacing:2px; }
+  #memory-clear { background:transparent; border:1px solid var(--gray2); color:var(--gray2); font-family:var(--font-mono); font-size:8px; letter-spacing:1px; padding:2px 8px; cursor:pointer; border-radius:2px; transition:all .2s; }
+  #memory-clear:hover{border-color:var(--red);color:var(--red)}
+
+  /* Commands panel */
+  #cmd-panel { position:fixed; right:24px; top:50%; transform:translateY(-50%); z-index:20; background:rgba(8,12,18,.95); border:1px solid var(--border); padding:16px; width:200px; border-radius:4px; display:none; }
+  #cmd-panel h3 { font-family:var(--font-mono); font-size:9px; color:var(--cyan-dim); letter-spacing:3px; margin-bottom:12px; }
+  .cmd-item { font-family:var(--font-mono); font-size:10px; color:var(--gray); margin-bottom:7px; line-height:1.5; }
+  .cmd-item span { color:var(--accent); }
+  #cmd-toggle { position:fixed; right:24px; top:50%; transform:translateY(-50%); z-index:21; background:transparent; border:1px solid var(--border); color:var(--gray2); font-family:var(--font-mono); font-size:8px; letter-spacing:2px; padding:6px 10px; cursor:pointer; border-radius:2px; transition:all .2s; writing-mode:vertical-rl; }
+  #cmd-toggle:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* Overlay */
+  #overlay { position:fixed; inset:0; z-index:100; background:rgba(3,5,8,.97); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px; }
+  #overlay h2{font-family:var(--font-hud);font-size:clamp(20px,5vw,32px);color:var(--cyan);letter-spacing:.3em}
+  #overlay p{font-family:var(--font-mono);font-size:11px;color:var(--gray);letter-spacing:1px;text-align:center;max-width:380px;line-height:1.9}
+  .note{font-size:10px!important;color:var(--gray2)!important}
+  .steps{display:flex;flex-direction:column;gap:7px;max-width:300px}
+  .step{font-family:var(--font-mono);font-size:10px;color:var(--gray2);letter-spacing:1px;display:flex;align-items:center;gap:10px}
+  .step-num{width:18px;height:18px;border-radius:50%;border:1px solid var(--cyan-dim);display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--cyan-dim);flex-shrink:0}
+  #start-btn{padding:13px 42px;background:transparent;border:1px solid var(--cyan);color:var(--cyan);font-family:var(--font-hud);font-size:11px;letter-spacing:4px;cursor:pointer;transition:all .3s;margin-top:6px}
+  #start-btn:hover{box-shadow:0 0 22px rgba(0,212,255,.3);letter-spacing:6px;background:rgba(0,212,255,.05)}
+  #start-btn:disabled{opacity:.4;cursor:not-allowed}
+
+  #hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-family:var(--font-mono);font-size:9px;color:var(--gray2);letter-spacing:2px;z-index:10;white-space:nowrap}
+
+  /* Pause button */
+  #pause-btn {
+    position: fixed; bottom: 44px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 20; display: none;
+    align-items: center; gap: 10px;
+    padding: 10px 28px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 3px; cursor: pointer;
+    border-radius: 2px; transition: all .3s;
+  }
+  #pause-btn:hover { background: rgba(0,212,255,.08); box-shadow: 0 0 16px rgba(0,212,255,.2); }
+  #pause-btn.paused { border-color: var(--red); color: var(--red); }
+  #pause-btn.paused:hover { background: rgba(255,45,91,.08); box-shadow: 0 0 16px rgba(255,45,91,.2); }
+  #pause-btn .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulseDot 1.5s infinite; transition: background .3s; }
+  #pause-btn.paused .dot { background:var(--red); animation:none; opacity:.7; }
+
+  /* Mode color themes */
+  body.mode-profesional { --accent:#00d4ff; }
+  body.mode-amigable    { --accent:#00ff88; }
+  body.mode-tecnico     { --accent:#aa66ff; }
+
+  body.mode-amigable #rynn-name  { background:linear-gradient(135deg,var(--green) 0%,#fff 50%,#00aa55 100%); -webkit-background-clip:text; background-clip:text; }
+  body.mode-tecnico  #rynn-name  { background:linear-gradient(135deg,var(--purple) 0%,#fff 50%,#6633aa 100%); -webkit-background-clip:text; background-clip:text; }
+
+  @media(max-width:480px){
+    #rynn-name{font-size:48px}
+    #orb-wrap{width:158px;height:158px}
+    #orb{width:86px;height:86px}
+    .ring-1{width:158px;height:158px}.ring-2{width:128px;height:128px}.ring-3{width:100px;height:100px}
+    #hud-top{padding:0 38px}
+    #cmd-toggle,#cmd-panel{display:none!important}
+    #mode-bar{flex-wrap:wrap;justify-content:center}
+  }
+</style>
+</head>
+<body class="mode-profesional">
+
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+<div id="bg-grid"></div>
+<div id="scanline"></div>
+<div class="corner tl"></div><div class="corner tr"></div>
+<div class="corner bl"></div><div class="corner br"></div>
+
+<!-- HUD -->
+<div id="hud-top">
+  <div><span class="status-dot"></span><span id="hud-status">SISTEMA ACTIVO</span></div>
+  <div style="font-size:9px;letter-spacing:3px;color:var(--gray)">RYNN v2.0</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="mode-badge">PROFESIONAL</span>
+    <span id="clock">--:--:--</span>
+  </div>
+</div>
+
+<!-- Commands panel -->
+<button id="cmd-toggle" onclick="toggleCmdPanel()">COMANDOS</button>
+<div id="cmd-panel">
+  <h3>COMANDOS DE VOZ</h3>
+  <div class="cmd-item"><span>"detente"</span> — pausar Rynn</div>
+  <div class="cmd-item"><span>"despierta"</span> — reactivar</div>
+  <div class="cmd-item"><span>"abre YouTube"</span> — abrir sitio</div>
+  <div class="cmd-item"><span>"busca [tema]"</span> — Google</div>
+  <div class="cmd-item"><span>"modo amigable"</span> — cambiar tono</div>
+  <div class="cmd-item"><span>"modo técnico"</span> — cambiar tono</div>
+  <div class="cmd-item"><span>"modo profesional"</span> — cambiar tono</div>
+  <div class="cmd-item"><span>"olvida todo"</span> — borrar memoria</div>
+  <div class="cmd-item"><span>"¿qué recuerdas?"</span> — ver memoria</div>
+</div>
+
+<!-- Overlay inicio -->
+<div id="overlay">
+  <h2>RYNN</h2>
+  <p>Asistente de voz v2.0 — memoria persistente,<br>comandos especiales y modos de personalidad.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div>Clic en "Activar Rynn"</div>
+    <div class="step"><div class="step-num">2</div>Puter pedirá login si es necesario (gratis)</div>
+    <div class="step"><div class="step-num">3</div>Permite el micrófono</div>
+    <div class="step"><div class="step-num">4</div>Habla — Rynn siempre escucha</div>
+  </div>
+  <button id="start-btn" onclick="initRynn()">ACTIVAR RYNN</button>
+  <p class="note">Completamente gratuito — powered by Puter.js</p>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div id="rynn-name">RYNN</div>
+  <div id="rynn-tagline">ASISTENTE DE VOZ — SIEMPRE ESCUCHANDO</div>
+
+  <div id="orb-wrap">
+    <div class="ring ring-1"></div>
+    <div class="ring ring-2"></div>
+    <div class="ring ring-3"></div>
+    <div id="orb">
+      <div id="canvas-wrap">
+        <canvas id="audio-canvas" width="70" height="40"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="status">ESPERANDO ACTIVACIÓN</div>
+
+  <!-- Mode buttons -->
+  <div id="mode-bar">
+    <button class="mode-btn active" onclick="setMode('profesional')">PROFESIONAL</button>
+    <button class="mode-btn" onclick="setMode('amigable')">AMIGABLE</button>
+    <button class="mode-btn" onclick="setMode('tecnico')">TÉCNICO</button>
+  </div>
+
+  <!-- Memory indicator -->
+  <div id="memory-bar">
+    <span id="memory-count">MEMORIA: 0 RECUERDOS</span>
+    <button id="memory-clear" onclick="clearMemory()">BORRAR</button>
+  </div>
+
+  <div id="chat-area"></div>
+</div>
+
+
+  <span style="color:var(--border)">"detente"</span> pausar ·
+  <span style="color:var(--border)">"busca [tema]"</span> Google ·
+  <span style="color:var(--border)">"abre [sitio]"</span> abrir ·
+  <span style="color:var(--border)">"modo [nombre]"</span> cambiar personalidad
+</div>
+
+<button id="pause-btn" onclick="togglePause()">
+  <span class="dot"></span>
+  <span id="pause-label">PAUSAR RYNN</span>
+</button>
+
+<script>
+// ── ESTADO ────────────────────────────────────────────────
+let recognition = null;
+const synth = window.speechSynthesis;
+let isSpeaking = false, isProcessing = false, active = true;
+let currentMode = 'profesional';
+let selectedVoice = null;
+let audioCtx = null, analyser = null, micStream = null;
+let animFrame = null;
+let cmdPanelOpen = false;
+
+// Memoria persistente (localStorage con fallback a sessionStorage)
+const MEMORY_KEY = 'rynn_memory_v2';
+const HISTORY_KEY = 'rynn_history_v2';
+
+function saveMemory(mem) {
+  try { localStorage.setItem(MEMORY_KEY, JSON.stringify(mem)); } catch(e) {}
+}
+function loadMemory() {
+  try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveHistory(hist) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(hist.slice(-20))); } catch(e) {}
+}
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; }
+}
+
+let conversationHistory = loadHistory();
+let memory = loadMemory();
+updateMemoryUI();
+
+// ── MODOS ─────────────────────────────────────────────────
+const MODES = {
+  profesional: {
+    name: 'PROFESIONAL',
+    prompt: 'Eres Rynn, asistente de voz con IA. Tono: profesional, precisa, directa, eficiente. Español latinoamericano formal pero natural.',
+    color: '#00d4ff'
+  },
+  amigable: {
+    name: 'AMIGABLE',
+    prompt: 'Eres Rynn, asistente de voz con IA. Tono: cálido, cercano, empático, como una amiga inteligente. Español latinoamericano casual y natural.',
+    color: '#00ff88'
+  },
+  tecnico: {
+    name: 'TÉCNICO',
+    prompt: 'Eres Rynn, asistente de voz con IA. Tono: técnico, analítico, preciso, orientado a datos y soluciones. Usa terminología técnica cuando sea apropiado.',
+    color: '#aa66ff'
+  }
+};
+
+function setMode(mode) {
+  currentMode = mode;
+  document.body.className = `mode-${mode}`;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.mode-btn[onclick="setMode('${mode}')"]`).classList.add('active');
+  document.getElementById('mode-badge').textContent = MODES[mode].name;
+  addMsg('cmd', `// MODO ${MODES[mode].name} ACTIVADO`);
+}
+
+// ── RELOJ ─────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8);
+}, 1000);
+
+// ── CURSOR ────────────────────────────────────────────────
+const cur = document.getElementById('cursor');
+const curR = document.getElementById('cursor-ring');
+document.addEventListener('mousemove', e => {
+  cur.style.left = e.clientX-4+'px'; cur.style.top = e.clientY-4+'px';
+  curR.style.left = e.clientX-14+'px'; curR.style.top = e.clientY-14+'px';
+});
+
+// ── VOCES ─────────────────────────────────────────────────
+function loadVoices() {
+  const vs = synth.getVoices();
+  selectedVoice = vs.find(v => v.lang.startsWith('es') && /female|mujer|paulina|monica|lucia/i.test(v.name))
+    || vs.find(v => v.lang.startsWith('es'))
+    || vs[0];
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+
+// ── AUDIO VISUALIZER ──────────────────────────────────────
+const canvas = document.getElementById('audio-canvas');
+const ctx2d = canvas.getContext('2d');
+const BAR_COUNT = 9;
+
+function drawIdle() {
+  ctx2d.clearRect(0,0,70,40);
+  const t = Date.now() / 1000;
+  const w = 4, gap = 3;
+  const totalW = BAR_COUNT * (w + gap) - gap;
+  const startX = (70 - totalW) / 2;
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const phase = (i / BAR_COUNT) * Math.PI * 2;
+    const h = 4 + Math.abs(Math.sin(t * 1.5 + phase)) * 28;
+    const x = startX + i * (w + gap);
+    const y = (40 - h) / 2;
+    const alpha = 0.3 + Math.abs(Math.sin(t + phase)) * 0.3;
+    ctx2d.fillStyle = `rgba(0,212,255,${alpha})`;
+    ctx2d.beginPath();
+    ctx2d.roundRect(x, y, w, h, 2);
+    ctx2d.fill();
+  }
+  animFrame = requestAnimationFrame(drawIdle);
+}
+
+function drawAudio() {
+  if (!analyser) return;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+  ctx2d.clearRect(0,0,70,40);
+  const w = 4, gap = 3;
+  const totalW = BAR_COUNT * (w + gap) - gap;
+  const startX = (70 - totalW) / 2;
+  const step = Math.floor(data.length / BAR_COUNT);
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const val = data[i * step] / 255;
+    const h = Math.max(3, val * 38);
+    const x = startX + i * (w + gap);
+    const y = (40 - h) / 2;
+    const g = ctx2d.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#00d4ff');
+    g.addColorStop(1, '#0066aa');
+    ctx2d.fillStyle = g;
+    ctx2d.beginPath();
+    ctx2d.roundRect(x, y, w, h, 2);
+    ctx2d.fill();
+  }
+  animFrame = requestAnimationFrame(drawAudio);
+}
+
+async function startAudioViz() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStream = stream;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 64;
+    const source = audioCtx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    cancelAnimationFrame(animFrame);
+    drawAudio();
+  } catch(e) {
+    drawIdle();
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────────
+async function initRynn() {
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true; btn.textContent = 'CONECTANDO...';
+
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'ACTIVAR RYNN';
+    addOverlayError('Micrófono denegado. Habilítalo en tu navegador.');
+    return;
+  }
+
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('pause-btn').style.display = 'flex';
+  startAudioViz();
+  setupSR();
+
+  const greeting = conversationHistory.length > 0
+    ? `Hola de nuevo. Recuerdo nuestra última conversación. ¿En qué te ayudo?`
+    : `Hola. Soy Rynn. Estoy escuchándote.`;
+
+  speak(greeting, startListening);
+}
+
+// ── SPEECH RECOGNITION ────────────────────────────────────
+function setupSR() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { addMsg('error','Usa Chrome o Edge para reconocimiento de voz.'); return; }
+  recognition = new SR();
+  recognition.lang = 'es-ES';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onstart = () => {
+    setStatus('listening','ESCUCHANDO');
+    document.getElementById('hud-status').textContent = 'MICRÓFONO ACTIVO';
+  };
+  recognition.onresult = e => {
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++)
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+    if (final.trim()) handleInput(final.trim());
+  };
+  recognition.onerror = e => { if(e.error!=='no-speech'&&e.error!=='aborted') console.warn(e.error); };
+  recognition.onend = () => { if(active&&!isSpeaking&&!isProcessing) setTimeout(startListening,300); };
+}
+
+function startListening() { try { recognition?.start(); } catch(e){} }
+function stopListening()  { try { recognition?.stop();  } catch(e){} }
+
+// ── COMANDOS ESPECIALES ───────────────────────────────────
+const SITES = {
+  'youtube': 'https://youtube.com',
+  'google': 'https://google.com',
+  'gmail': 'https://gmail.com',
+  'maps': 'https://maps.google.com',
+  'spotify': 'https://open.spotify.com',
+  'netflix': 'https://netflix.com',
+  'instagram': 'https://instagram.com',
+  'twitter': 'https://twitter.com',
+  'x': 'https://x.com',
+  'whatsapp': 'https://web.whatsapp.com',
+  'facebook': 'https://facebook.com',
+  'wikipedia': 'https://wikipedia.org',
+};
+
+function checkSpecialCommand(text) {
+  const lo = text.toLowerCase();
+
+  // Pausa / activar
+  if (/\b(detente|pausa|silencio)\b/.test(lo)) {
+    active = false;
+    const btn = document.getElementById('pause-btn');
+    if (btn) { btn.classList.add('paused'); document.getElementById('pause-label').textContent = 'REACTIVAR RYNN'; }
+    speak('Entendido. En pausa.');
+    setStatus('','EN PAUSA');
+    return true;
+  }
+  if (!active && /\b(despierta|actívate|rynn)\b/.test(lo)) {
+    active = true;
+    const btn = document.getElementById('pause-btn');
+    if (btn) { btn.classList.remove('paused'); document.getElementById('pause-label').textContent = 'PAUSAR RYNN'; }
+    speak('Estoy aquí.', startListening);
+    return true;
+  }
+  if (!active) return true;
+
+  // Modos de personalidad
+  if (/modo (profesional|formal)/i.test(lo)) {
+    setMode('profesional');
+    speak('Modo profesional activado.', startListening);
+    return true;
+  }
+  if (/modo (amigable|casual|amiga)/i.test(lo)) {
+    setMode('amigable');
+    speak('Modo amigable activado. ¡Hola!', startListening);
+    return true;
+  }
+  if (/modo (técnico|técnica|programación)/i.test(lo)) {
+    setMode('tecnico');
+    speak('Modo técnico activado.', startListening);
+    return true;
+  }
+
+  // Abrir sitios
+  const openMatch = lo.match(/\b(abre|abrir|ir a|entra a)\s+(.+)/);
+  if (openMatch) {
+    const site = openMatch[2].trim().toLowerCase();
+    const url = SITES[site] || `https://${site}.com`;
+    addMsg('cmd', `// ABRIENDO: ${url}`);
+    speak(`Abriendo ${openMatch[2]}.`, () => {
+      window.open(url, '_blank');
+      startListening();
+    });
+    return true;
+  }
+
+  // Buscar en Google
+  const searchMatch = lo.match(/\b(busca|buscar|googlea|search)\s+(.+)/);
+  if (searchMatch) {
+    const query = searchMatch[2].trim();
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    addMsg('cmd', `// BUSCANDO: ${query}`);
+    speak(`Buscando ${query} en Google.`, () => {
+      window.open(url, '_blank');
+      startListening();
+    });
+    return true;
+  }
+
+  // Memoria
+  if (/olvida (todo|la conversación|el historial)/i.test(lo)) {
+    clearMemory();
+    speak('Memoria borrada. Empezamos de cero.', startListening);
+    return true;
+  }
+  if (/qué recuerdas|qué sabes de mí|tu memoria/i.test(lo)) {
+    const memText = memory.length > 0
+      ? `Recuerdo ${memory.length} cosas de ti. Por ejemplo: ${memory.slice(-3).join('. ')}`
+      : 'Todavía no tengo recuerdos guardados de ti.';
+    speak(memText, startListening);
+    return true;
+  }
+
+  return false;
+}
+
+// ── HANDLE INPUT ──────────────────────────────────────────
+async function handleInput(text) {
+  if (isSpeaking || isProcessing) return;
+  if (checkSpecialCommand(text)) return;
+
+  stopListening();
+  addMsg('user', text);
+  setStatus('processing','PROCESANDO');
+  isProcessing = true;
+
+  try {
+    const reply = await askClaude(text);
+    extractMemory(text, reply);
+    isProcessing = false;
+    speak(reply, startListening);
+  } catch(err) {
+    isProcessing = false;
+    console.error(err);
+    addMsg('error','Error de conexión. Intenta de nuevo.');
+    speak('Hubo un error. Intenta de nuevo.', startListening);
+  }
+}
+
+// ── MEMORIA INTELIGENTE ───────────────────────────────────
+function extractMemory(userText, rynthReply) {
+  // Detectar datos personales mencionados por el usuario
+  const patterns = [
+    { re: /me llamo ([A-Za-záéíóúñ]+)/i,      prefix: 'Tu nombre es' },
+    { re: /mi nombre es ([A-Za-záéíóúñ]+)/i,  prefix: 'Tu nombre es' },
+    { re: /soy ([A-Za-záéíóúñ]+ ?[A-Za-záéíóúñ]*)/i, prefix: 'Eres' },
+    { re: /tengo (\d+) años/i,                prefix: 'Tienes' },
+    { re: /vivo en ([A-Za-záéíóúñ ,]+)/i,     prefix: 'Vives en' },
+    { re: /trabajo (en|de|como) ([^.]+)/i,    prefix: 'Trabajas' },
+    { re: /estoy escribiendo ([^.]+)/i,       prefix: 'Estás escribiendo' },
+    { re: /mi (proyecto|novela|app|aplicación) ([^.]+)/i, prefix: 'Tu proyecto:' },
+  ];
+  for (const p of patterns) {
+    const m = userText.match(p.re);
+    if (m) {
+      const fact = `${p.prefix} ${m[1] || m[2]}`;
+      if (!memory.includes(fact)) {
+        memory.push(fact);
+        saveMemory(memory);
+        updateMemoryUI();
+      }
+    }
+  }
+}
+
+function clearMemory() {
+  memory = [];
+  conversationHistory = [];
+  saveMemory(memory);
+  saveHistory(conversationHistory);
+  updateMemoryUI();
+  addMsg('cmd','// MEMORIA BORRADA');
+}
+
+function updateMemoryUI() {
+  document.getElementById('memory-count').textContent =
+    `MEMORIA: ${memory.length} RECUERDOS`;
+}
+
+// ── PUTER + CLAUDE ────────────────────────────────────────
+async function askClaude(userMsg) {
+  conversationHistory.push({ role:'user', content:userMsg });
+  saveHistory(conversationHistory);
+
+  const memoryContext = memory.length > 0
+    ? `\n\nLo que recuerdas del usuario:\n${memory.join('\n')}`
+    : '';
+
+  const systemPrompt = MODES[currentMode].prompt +
+    `\nResponde en máximo 3-4 oraciones para voz. Sin emojis ni markdown. Solo texto plano.` +
+    memoryContext;
+
+  const msgs = [{
+    role: 'user',
+    content: systemPrompt + '\n\nHistorial reciente:\n' +
+      conversationHistory.slice(-10).map(m =>
+        `${m.role==='user'?'Usuario':'Rynn'}: ${m.content}`
+      ).join('\n') +
+      '\n\nResponde solo como Rynn.'
+  }];
+
+  const res = await puter.ai.chat(msgs, { model:'claude-sonnet-4-6' });
+
+  let reply = '';
+  if (res?.message?.content) {
+    reply = Array.isArray(res.message.content)
+      ? res.message.content.map(c => c.text||'').join('')
+      : res.message.content;
+  } else if (typeof res === 'string') {
+    reply = res;
+  }
+  reply = reply.trim();
+  conversationHistory.push({ role:'assistant', content:reply });
+  saveHistory(conversationHistory);
+  return reply;
+}
+
+// ── SPEAK ─────────────────────────────────────────────────
+function speak(text, cb) {
+  synth.cancel();
+  isSpeaking = true;
+  setStatus('speaking','HABLANDO');
+  addMsg('rynn', text);
+
+  const u = new SpeechSynthesisUtterance(text);
+  u.voice = selectedVoice;
+  u.lang = 'es-ES';
+  u.rate = 0.93; u.pitch = 1.05; u.volume = 1;
+  u.onend = () => { isSpeaking=false; setStatus('listening','ESCUCHANDO'); cb&&cb(); };
+  u.onerror = () => { isSpeaking=false; cb&&cb(); };
+  setTimeout(() => synth.speak(u), 120);
+}
+
+// ── UI ────────────────────────────────────────────────────
+function setStatus(state, text) {
+  document.body.className = `mode-${currentMode} ${state}`;
+  document.getElementById('status').textContent = text;
+}
+
+function addMsg(role, text) {
+  const chat = document.getElementById('chat-area');
+  const d = document.createElement('div');
+  d.className = `msg ${role}`; d.textContent = text;
+  chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+  const all = chat.querySelectorAll('.msg');
+  if (all.length > 14) all[0].remove();
+}
+
+function addOverlayError(msg) {
+  const ov = document.getElementById('overlay');
+  let e = ov.querySelector('.ov-err');
+  if (!e) { e=document.createElement('p'); e.className='ov-err'; e.style.color='#ff6688'; e.style.fontSize='11px'; ov.appendChild(e); }
+  e.textContent = '⚠ '+msg;
+}
+
+function togglePause() {
+  const btn = document.getElementById('pause-btn');
+  const label = document.getElementById('pause-label');
+  if (active) {
+    active = false;
+    btn.classList.add('paused');
+    label.textContent = 'REACTIVAR RYNN';
+    setStatus('', 'EN PAUSA');
+    synth.cancel();
+    isSpeaking = false;
+    addMsg('cmd', '// RYNN EN PAUSA');
+  } else {
+    active = true;
+    btn.classList.remove('paused');
+    label.textContent = 'PAUSAR RYNN';
+    speak('Estoy aquí.', startListening);
+  }
+}
+
+function toggleCmdPanel() {
+  cmdPanelOpen = !cmdPanelOpen;
+  document.getElementById('cmd-panel').style.display = cmdPanelOpen ? 'block' : 'none';
+  document.getElementById('cmd-toggle').style.display = cmdPanelOpen ? 'none' : 'block';
+}
+
+// Iniciar animación idle
+drawIdle();
+</script>
+</body>
+</html>
