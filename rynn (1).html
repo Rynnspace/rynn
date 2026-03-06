@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RYNN — Asistente de Voz</title>
+<script src="https://js.puter.com/v2/"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #030508;
+    --surface:   #0d1520;
+    --border:    #1a2d45;
+    --cyan:      #00d4ff;
+    --cyan-dim:  #0088aa;
+    --red:       #ff2d5b;
+    --white:     #e8f4ff;
+    --gray:      #4a6070;
+    --gray2:     #2a3a4a;
+    --font-hud:  'Orbitron', monospace;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-body: 'Rajdhani', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width:100%; height:100%; background:var(--bg); color:var(--white); font-family:var(--font-body); overflow:hidden; cursor:none; }
+
+  #cursor { position:fixed; width:8px; height:8px; background:var(--cyan); border-radius:50%; pointer-events:none; z-index:9999; box-shadow:0 0 10px var(--cyan); transition:transform .1s; }
+  #cursor-ring { position:fixed; width:28px; height:28px; border:1px solid var(--cyan-dim); border-radius:50%; pointer-events:none; z-index:9998; opacity:.5; transition:left .12s,top .12s; }
+
+  #bg-grid { position:fixed; inset:0; z-index:0; background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px); background-size:40px 40px; animation:gridShift 20s linear infinite; }
+  @keyframes gridShift { 100%{background-position:40px 40px} }
+
+  #scanline { position:fixed; inset:0; z-index:1; pointer-events:none; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px); }
+
+  .corner { position:fixed; width:55px; height:55px; z-index:2; pointer-events:none; }
+  .corner::before,.corner::after { content:''; position:absolute; background:var(--cyan); opacity:.5; }
+  .corner::before { width:2px; height:100%; }
+  .corner::after  { width:100%; height:2px; }
+  .corner.tl{top:18px;left:18px} .corner.tr{top:18px;right:18px;transform:scaleX(-1)} .corner.bl{bottom:18px;left:18px;transform:scaleY(-1)} .corner.br{bottom:18px;right:18px;transform:scale(-1)}
+
+  #hud-top { position:fixed; top:0; left:0; right:0; height:46px; z-index:10; display:flex; align-items:center; justify-content:space-between; padding:0 76px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,rgba(0,18,32,.95),transparent); font-family:var(--font-mono); font-size:10px; color:var(--cyan-dim); letter-spacing:2px; }
+  .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--cyan); margin-right:8px; animation:pulseDot 2s infinite; }
+  @keyframes pulseDot { 0%,100%{opacity:1;box-shadow:0 0 6px var(--cyan)} 50%{opacity:.3;box-shadow:none} }
+
+  #app { position:relative; z-index:5; width:100%; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:56px 20px 70px; }
+
+  #rynn-name { font-family:var(--font-hud); font-size:clamp(46px,10vw,86px); font-weight:900; letter-spacing:.3em; color:transparent; background:linear-gradient(135deg,var(--cyan) 0%,#fff 50%,var(--cyan-dim) 100%); -webkit-background-clip:text; background-clip:text; filter:drop-shadow(0 0 30px rgba(0,212,255,.4)); animation:nameGlow 4s ease-in-out infinite; margin-bottom:6px; }
+  @keyframes nameGlow { 0%,100%{filter:drop-shadow(0 0 20px rgba(0,212,255,.3))} 50%{filter:drop-shadow(0 0 50px rgba(0,212,255,.7))} }
+  #rynn-tagline { font-family:var(--font-mono); font-size:10px; color:var(--gray); letter-spacing:4px; margin-bottom:36px; }
+
+  #orb-wrap { position:relative; width:200px; height:200px; margin-bottom:32px; }
+  .ring { position:absolute; border-radius:50%; border:1px solid transparent; top:50%; left:50%; transform:translate(-50%,-50%); }
+  .ring-1{width:200px;height:200px;border-top-color:var(--cyan);border-right-color:var(--cyan-dim);animation:spin1 8s linear infinite;opacity:.6}
+  .ring-2{width:168px;height:168px;border-bottom-color:var(--cyan);border-left-color:var(--cyan-dim);animation:spin2 5s linear infinite;opacity:.4}
+  .ring-3{width:136px;height:136px;border-top-color:rgba(0,212,255,.25);animation:spin1 13s linear infinite;opacity:.5}
+  @keyframes spin1{to{transform:translate(-50%,-50%) rotate(360deg)}} @keyframes spin2{to{transform:translate(-50%,-50%) rotate(-360deg)}}
+
+  #orb { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:108px; height:108px; border-radius:50%; background:radial-gradient(circle at 35% 35%,rgba(0,212,255,.14) 0%,rgba(0,100,160,.08) 40%,rgba(0,20,40,.9) 100%); border:1px solid rgba(0,212,255,.3); box-shadow:0 0 30px rgba(0,212,255,.2),inset 0 0 30px rgba(0,212,255,.05); display:flex; align-items:center; justify-content:center; transition:all .3s; }
+
+  #wave-bars { display:flex; align-items:center; gap:3px; height:40px; }
+  .bar { width:3px; border-radius:2px; background:linear-gradient(180deg,var(--cyan),var(--cyan-dim)); transform-origin:center; animation:barIdle 2s ease-in-out infinite; }
+  .bar:nth-child(1){height:8px;animation-delay:.0s}.bar:nth-child(2){height:16px;animation-delay:.1s}.bar:nth-child(3){height:24px;animation-delay:.2s}.bar:nth-child(4){height:32px;animation-delay:.3s}.bar:nth-child(5){height:40px;animation-delay:.4s}.bar:nth-child(6){height:32px;animation-delay:.5s}.bar:nth-child(7){height:24px;animation-delay:.6s}.bar:nth-child(8){height:16px;animation-delay:.7s}.bar:nth-child(9){height:8px;animation-delay:.8s}
+  @keyframes barIdle{0%,100%{transform:scaleY(.3);opacity:.4}50%{transform:scaleY(1);opacity:1}}
+
+  body.listening #orb{background:radial-gradient(circle at 35% 35%,rgba(0,212,255,.28) 0%,rgba(0,150,200,.14) 40%,rgba(0,30,50,.9) 100%);box-shadow:0 0 80px rgba(0,212,255,.6),inset 0 0 50px rgba(0,212,255,.2);border-color:var(--cyan);animation:orbPulse 1s ease-in-out infinite}
+  @keyframes orbPulse{0%,100%{box-shadow:0 0 60px rgba(0,212,255,.5),inset 0 0 40px rgba(0,212,255,.15)}50%{box-shadow:0 0 100px rgba(0,212,255,.8),inset 0 0 60px rgba(0,212,255,.25)}}
+  body.listening .bar{animation:barListen .4s ease-in-out infinite}
+  body.listening .ring-1{animation-duration:3s;opacity:1} body.listening .ring-2{animation-duration:2s;opacity:.8}
+  @keyframes barListen{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+
+  body.speaking #orb{box-shadow:0 0 60px rgba(0,212,255,.5),inset 0 0 40px rgba(0,212,255,.15)}
+  body.speaking .bar{animation:barSpeak .3s ease-in-out infinite}
+  .bar:nth-child(odd){animation-delay:0s!important}.bar:nth-child(even){animation-delay:.15s!important}
+  @keyframes barSpeak{0%,100%{transform:scaleY(.2)}50%{transform:scaleY(1)}}
+
+  body.processing #orb{animation:orbProcess 1.5s ease-in-out infinite}
+  @keyframes orbProcess{0%{border-color:rgba(0,212,255,.3)}50%{border-color:rgba(0,212,255,.9);box-shadow:0 0 70px rgba(0,212,255,.5)}100%{border-color:rgba(0,212,255,.3)}}
+
+  #status { font-family:var(--font-mono); font-size:12px; color:var(--cyan-dim); letter-spacing:3px; text-transform:uppercase; height:20px; transition:all .3s; margin-bottom:24px; }
+  body.listening #status{color:var(--cyan)} body.speaking #status{color:#88ddff} body.processing #status{color:var(--gray);animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.3}}
+
+  #chat-area { width:100%; max-width:680px; max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:0 4px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  #chat-area::-webkit-scrollbar{width:3px} #chat-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  .msg{padding:10px 14px;border-radius:3px;font-size:14px;line-height:1.6;animation:msgIn .3s ease-out;border-left:2px solid transparent}
+  @keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .msg.user{background:rgba(0,212,255,.04);border-left:none;border-right:2px solid var(--cyan-dim);color:var(--gray);font-family:var(--font-mono);font-size:11px;letter-spacing:.5px;align-self:flex-end;max-width:90%;text-align:right}
+  .msg.user::before{content:'[ TÚ ] ';color:var(--cyan-dim);font-size:10px;letter-spacing:2px}
+  .msg.rynn{background:rgba(0,20,35,.8);border-left-color:var(--cyan);color:var(--white);font-family:var(--font-body);font-size:14px;font-weight:300;align-self:flex-start;max-width:95%}
+  .msg.rynn::before{content:'RYNN // ';color:var(--cyan);font-family:var(--font-mono);font-size:10px;letter-spacing:2px}
+  .msg.error{background:rgba(255,45,91,.08);border-left-color:var(--red);color:#ff9999;font-size:11px;font-family:var(--font-mono)}
+
+  #overlay { position:fixed; inset:0; z-index:100; background:rgba(3,5,8,.97); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:20px; }
+  #overlay h2 { font-family:var(--font-hud); font-size:clamp(22px,6vw,34px); color:var(--cyan); letter-spacing:.3em; }
+  #overlay p { font-family:var(--font-mono); font-size:12px; color:var(--gray); letter-spacing:1px; text-align:center; max-width:400px; line-height:1.9; }
+  .note { font-size:10px!important; color:var(--gray2)!important; max-width:360px!important; }
+  .steps { display:flex; flex-direction:column; gap:8px; max-width:320px; }
+  .step { font-family:var(--font-mono); font-size:11px; color:var(--gray2); letter-spacing:1px; display:flex; align-items:center; gap:10px; }
+  .step-num { width:20px; height:20px; border-radius:50%; border:1px solid var(--cyan-dim); display:flex; align-items:center; justify-content:center; font-size:9px; color:var(--cyan-dim); flex-shrink:0; }
+  #start-btn { padding:14px 44px; background:transparent; border:1px solid var(--cyan); color:var(--cyan); font-family:var(--font-hud); font-size:12px; letter-spacing:4px; cursor:pointer; transition:all .3s; margin-top:8px; }
+  #start-btn:hover{box-shadow:0 0 24px rgba(0,212,255,.35);letter-spacing:6px;background:rgba(0,212,255,.05)}
+  #start-btn:disabled{opacity:.4;cursor:not-allowed}
+
+  #hint{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);font-family:var(--font-mono);font-size:10px;color:var(--gray2);letter-spacing:2px;z-index:10;white-space:nowrap}
+
+  @media(max-width:480px){#rynn-name{font-size:50px}#orb-wrap{width:160px;height:160px}#orb{width:88px;height:88px}.ring-1{width:160px;height:160px}.ring-2{width:130px;height:130px}.ring-3{width:105px;height:105px}#hud-top{padding:0 40px}}
+</style>
+</head>
+<body>
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+<div id="bg-grid"></div>
+<div id="scanline"></div>
+<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+
+<div id="hud-top">
+  <div><span class="status-dot"></span><span id="hud-status">SISTEMA ACTIVO</span></div>
+  <div style="font-size:9px;letter-spacing:3px;color:var(--gray)">RYNN // v1.0 — POWERED BY PUTER</div>
+  <div id="clock">--:--:--</div>
+</div>
+
+<div id="overlay">
+  <h2>RYNN</h2>
+  <p>Asistente de voz con inteligencia artificial.<br>
+     Completamente gratuito — sin API key requerida.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div>Haz clic en "Activar Rynn"</div>
+    <div class="step"><div class="step-num">2</div>Puter puede pedirte iniciar sesión (es gratis)</div>
+    <div class="step"><div class="step-num">3</div>Permite el micrófono cuando el navegador lo pida</div>
+    <div class="step"><div class="step-num">4</div>Habla — Rynn siempre está escuchando</div>
+  </div>
+  <button id="start-btn" onclick="initRynn()">ACTIVAR RYNN</button>
+  <p class="note">Puter.com provee acceso gratuito a Claude.<br>Si no tienes cuenta, crear una es rápido y gratuito.</p>
+</div>
+
+<div id="app">
+  <div id="rynn-name">RYNN</div>
+  <div id="rynn-tagline">ASISTENTE DE VOZ — SIEMPRE ESCUCHANDO</div>
+  <div id="orb-wrap">
+    <div class="ring ring-1"></div>
+    <div class="ring ring-2"></div>
+    <div class="ring ring-3"></div>
+    <div id="orb">
+      <div id="wave-bars">
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      </div>
+    </div>
+  </div>
+  <div id="status">ESPERANDO ACTIVACIÓN</div>
+  <div id="chat-area"></div>
+</div>
+
+<div id="hint">di <span style="color:var(--border)">"detente"</span> para pausar · <span style="color:var(--border)">"despierta"</span> para continuar</div>
+
+<script>
+let recognition = null;
+const synth = window.speechSynthesis;
+let isSpeaking = false, isProcessing = false, active = true;
+let conversationHistory = [];
+let selectedVoice = null;
+
+// Reloj
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8);
+}, 1000);
+
+// Cursor
+const cur = document.getElementById('cursor');
+const curR = document.getElementById('cursor-ring');
+document.addEventListener('mousemove', e => {
+  cur.style.cssText += `left:${e.clientX-4}px;top:${e.clientY-4}px`;
+  curR.style.cssText += `left:${e.clientX-14}px;top:${e.clientY-14}px`;
+});
+
+// Voces
+function loadVoices() {
+  const vs = synth.getVoices();
+  selectedVoice = vs.find(v => v.lang.startsWith('es') && v.name.includes('female'))
+    || vs.find(v => v.lang.startsWith('es'))
+    || vs[0];
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+
+// Init
+async function initRynn() {
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true; btn.textContent = 'CONECTANDO...';
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'ACTIVAR RYNN';
+    addOverlayError('Micrófono denegado. Habilítalo en tu navegador.');
+    return;
+  }
+  document.getElementById('overlay').style.display = 'none';
+  setupSR();
+  speak('Hola. Soy Rynn. Estoy escuchándote.', startListening);
+}
+
+// Speech Recognition
+function setupSR() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { addMsg('error','Usa Chrome o Edge para reconocimiento de voz.'); return; }
+  recognition = new SR();
+  recognition.lang = 'es-ES';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onstart = () => {
+    setStatus('listening','ESCUCHANDO');
+    document.getElementById('hud-status').textContent = 'MICRÓFONO ACTIVO';
+  };
+  recognition.onresult = e => {
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++)
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+    if (final.trim()) handleInput(final.trim());
+  };
+  recognition.onerror = e => { if(e.error!=='no-speech'&&e.error!=='aborted') console.warn(e.error); };
+  recognition.onend = () => { if(active&&!isSpeaking&&!isProcessing) setTimeout(startListening,300); };
+}
+
+function startListening() { try { recognition?.start(); } catch(e){} }
+function stopListening()  { try { recognition?.stop();  } catch(e){} }
+
+// Handle input
+async function handleInput(text) {
+  if (isSpeaking || isProcessing) return;
+  const lo = text.toLowerCase();
+  if (lo.includes('detente')||lo.includes('pausa')) {
+    active=false; speak('Entendido. Me quedo en silencio.'); return;
+  }
+  if (!active && (lo.includes('despierta')||lo.includes('actívate'))) {
+    active=true; speak('Estoy aquí.',startListening); return;
+  }
+  if (!active) return;
+
+  stopListening();
+  addMsg('user', text);
+  setStatus('processing','PROCESANDO');
+  isProcessing = true;
+
+  try {
+    const reply = await askClaude(text);
+    isProcessing = false;
+    speak(reply, startListening);
+  } catch(err) {
+    isProcessing = false;
+    console.error(err);
+    addMsg('error','Error al conectar. Intenta de nuevo.');
+    speak('Hubo un error. Intenta de nuevo.', startListening);
+  }
+}
+
+// Puter + Claude
+async function askClaude(userMsg) {
+  conversationHistory.push({ role:'user', content:userMsg });
+
+  const systemPrompt = `Eres Rynn, una asistente de voz con IA. Personalidad: inteligente, directa, levemente misteriosa, femenina, con carácter propio. Español latinoamericano natural. Respuestas CONCISAS para voz — máximo 3-4 oraciones. Sin emojis ni markdown. Solo texto plano.`;
+
+  const msgs = [
+    { role:'user', content: systemPrompt + '\n\nHistorial:\n' +
+        conversationHistory.slice(-8).map(m=>`${m.role==='user'?'Usuario':'Rynn'}: ${m.content}`).join('\n') +
+        '\n\nResponde solo como Rynn.'
+    }
+  ];
+
+  const res = await puter.ai.chat(msgs, { model:'claude-sonnet-4-6' });
+
+  let reply = '';
+  if (res?.message?.content) {
+    reply = Array.isArray(res.message.content)
+      ? res.message.content.map(c=>c.text||'').join('')
+      : res.message.content;
+  } else if (typeof res === 'string') {
+    reply = res;
+  }
+  reply = reply.trim();
+  conversationHistory.push({ role:'assistant', content:reply });
+  return reply;
+}
+
+// Speak
+function speak(text, cb) {
+  synth.cancel();
+  isSpeaking = true;
+  setStatus('speaking','HABLANDO');
+  addMsg('rynn', text);
+
+  const u = new SpeechSynthesisUtterance(text);
+  u.voice = selectedVoice;
+  u.lang = 'es-ES';
+  u.rate = 0.93; u.pitch = 1.05; u.volume = 1;
+  u.onend = () => { isSpeaking=false; setStatus('listening','ESCUCHANDO'); cb&&cb(); };
+  u.onerror = () => { isSpeaking=false; cb&&cb(); };
+  setTimeout(() => synth.speak(u), 120);
+}
+
+// UI helpers
+function setStatus(state, text) {
+  document.body.className = state;
+  document.getElementById('status').textContent = text;
+}
+function addMsg(role, text) {
+  const chat = document.getElementById('chat-area');
+  const d = document.createElement('div');
+  d.className = `msg ${role}`; d.textContent = text;
+  chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+  const all = chat.querySelectorAll('.msg');
+  if (all.length > 12) all[0].remove();
+}
+function addOverlayError(msg) {
+  const ov = document.getElementById('overlay');
+  let e = ov.querySelector('.ov-err');
+  if (!e) { e=document.createElement('p'); e.className='ov-err'; e.style.color='#ff6688'; e.style.fontSize='11px'; ov.appendChild(e); }
+  e.textContent = '⚠ '+msg;
+}
+</script>
+</body>
+</html>
